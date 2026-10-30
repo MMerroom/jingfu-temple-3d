@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>桃園景福宮歇山重簷假四垂建築模擬</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif;
+      user-select: none;
+      background-color: #0c0a09;
+    }
+    /* Layout structure: Flex col on mobile, relative fullscreen on desktop */
+    #app-wrapper {
+      display: flex;
+      flex-direction: column;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      position: relative;
+    }
+    #canvas-container {
+      width: 100%;
+      flex: 1 1 auto;
+      position: relative;
+      touch-action: none;
+      min-height: 40vh;
+      overflow: hidden;
+    }
+    @media (min-width: 768px) {
+      #canvas-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 0;
+      }
+    }
+    .glass-panel {
+      background: rgba(28, 25, 23, 0.92);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(217, 119, 6, 0.25);
+    }
+    .hotspot {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(245, 158, 11, 0.95);
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.8);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1c1917;
+      font-weight: bold;
+      font-size: 11px;
+      transform: translate(-50%, -50%);
+      transition: transform 0.2s, background 0.2s;
+      z-index: 10;
+    }
+    .hotspot:hover {
+      transform: translate(-50%, -50%) scale(1.25);
+      background: #fbbf24;
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #78350f;
+      border-radius: 4px;
+    }
+    .panel-transition {
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    /* Mobile Sheet Snap States */
+    @media (max-width: 767px) {
+      .sheet-collapsed {
+        height: 52px !important;
+      }
+      .sheet-half {
+        height: 48vh !important;
+      }
+      .sheet-full {
+        height: 75vh !important;
+      }
+    }
+  </style>
+</head>
+<body class="text-stone-100">
+
+  <div id="app-wrapper">
+    <!-- 3D WebGL Canvas Viewport -->
+    <main id="canvas-container"></main>
+
+    <!-- Top Navigation Header -->
+    <header class="absolute top-3 left-3 sm:top-4 sm:left-4 z-20 flex flex-col gap-1 pointer-events-auto max-w-[calc(100vw-110px)] sm:max-w-md">
+      <div class="glass-panel px-3 py-2 sm:px-4 sm:py-2.5 rounded-2xl shadow-xl flex items-center gap-2.5">
+        <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center text-stone-900 shadow-md shrink-0">
+          <i class="fa-solid fa-place-of-worship text-sm sm:text-base"></i>
+        </div>
+        <div class="truncate">
+          <h1 class="text-xs sm:text-sm font-bold text-amber-300 tracking-wide flex items-center gap-1.5 truncate">
+            <span>桃園景福宮正殿</span>
+            <span class="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">彬派假四垂</span>
+          </h1>
+          <p class="text-[10px] sm:text-xs text-stone-400 truncate">歇山重簷假四垂・一體化大木模擬</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- Top Right Utility Controls -->
+    <div class="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
+      <button onclick="toggleDayNight()" id="btn-lighting" title="切換日夜光照" class="glass-panel w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-amber-300 hover:text-amber-200 transition text-xs sm:text-sm">
+        <i class="fa-solid fa-sun" id="icon-lighting"></i>
+      </button>
+      <button onclick="toggleWireframe()" id="btn-wireframe" title="透視大木結構骨架" class="glass-panel w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-stone-300 hover:text-amber-300 transition text-xs sm:text-sm">
+        <i class="fa-solid fa-cube"></i>
+      </button>
+      <button onclick="toggleAutoRotate()" id="btn-rotate" title="自動環繞運鏡" class="glass-panel w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-stone-300 hover:text-amber-300 transition text-xs sm:text-sm">
+        <i class="fa-solid fa-arrows-rotate"></i>
+      </button>
+      <button onclick="resetCameraView()" title="重置視角" class="glass-panel w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-stone-300 hover:text-amber-300 transition text-xs sm:text-sm">
+        <i class="fa-solid fa-compress"></i>
+      </button>
+    </div>
+
+    <!-- Camera Preset Buttons (Desktop Right Column) -->
+    <div class="absolute right-4 top-20 z-20 hidden md:flex flex-col gap-1.5 glass-panel p-2 rounded-2xl pointer-events-auto text-xs">
+      <span class="text-[10px] text-stone-400 font-semibold px-2 py-0.5 text-center">視角切換</span>
+      <button onclick="setCameraView('front')" class="px-2.5 py-1.5 rounded-lg hover:bg-stone-700/60 text-left transition flex items-center gap-2">
+        <i class="fa-regular fa-image text-amber-400 w-4 text-center"></i> 正面全景
+      </button>
+      <button onclick="setCameraView('side')" class="px-2.5 py-1.5 rounded-lg hover:bg-stone-700/60 text-left transition flex items-center gap-2">
+        <i class="fa-solid fa-mountain text-amber-400 w-4 text-center"></i> 山花山牆
+      </button>
+      <button onclick="setCameraView('eaves')" class="px-2.5 py-1.5 rounded-lg hover:bg-stone-700/60 text-left transition flex items-center gap-2">
+        <i class="fa-solid fa-layer-group text-amber-400 w-4 text-center"></i> 雙簷層次
+      </button>
+      <button onclick="setCameraView('under')" class="px-2.5 py-1.5 rounded-lg hover:bg-stone-700/60 text-left transition flex items-center gap-2">
+        <i class="fa-solid fa-up-long text-amber-400 w-4 text-center"></i> 殿內仰望
+      </button>
+      <button onclick="setCameraView('top')" class="px-2.5 py-1.5 rounded-lg hover:bg-stone-700/60 text-left transition flex items-center gap-2">
+        <i class="fa-solid fa-compass text-amber-400 w-4 text-center"></i> 歇山鳥瞰
+      </button>
+    </div>
+
+    <!-- Hotspot Info Dialog Modal (Floating Popup) -->
+    <div id="hotspot-modal" class="absolute left-3 top-16 sm:left-4 sm:top-20 z-30 w-72 sm:w-80 max-w-[calc(100vw-1.5rem)] glass-panel p-3.5 sm:p-4 rounded-2xl shadow-2xl transition-all duration-300 opacity-0 pointer-events-none translate-y-2 border-l-4 border-l-amber-500">
+      <div class="flex justify-between items-start mb-1.5">
+        <h3 id="modal-title" class="font-bold text-amber-300 text-xs sm:text-sm">構件名稱</h3>
+        <button onclick="closeModal()" class="text-stone-400 hover:text-white text-xs p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <p id="modal-desc" class="text-[11px] sm:text-xs text-stone-300 leading-relaxed mb-2.5">詳細力學說明與文史典故。</p>
+      <div id="modal-tag" class="text-[9px] sm:text-[10px] inline-block px-2 py-0.5 rounded-md bg-stone-800 text-amber-400 border border-stone-700 font-mono">
+        大木榫卯工藝
+      </div>
+    </div>
+
+    <!-- Desktop Minimized Button (Hidden on Mobile) -->
+    <button id="btn-open-sidebar" onclick="toggleSidebarPanel(true)" class="hidden absolute bottom-5 left-5 z-20 glass-panel px-4 py-2.5 rounded-2xl shadow-2xl items-center gap-2.5 text-amber-300 hover:text-amber-200 border border-amber-500/40 pointer-events-auto hover:bg-stone-800 transition">
+      <i class="fa-solid fa-sliders text-amber-400"></i>
+      <span class="text-xs font-semibold">開啟結構操作面板</span>
+    </button>
+
+    <!-- SEPARATE DOCK / BOTTOM SHEET FOR CONTROLS & TEXT -->
+    <!-- On mobile: Bottom sheet that shares screen space without covering 3D view -->
+    <!-- On desktop: Absolute pinned bottom-left floating dock -->
+    <aside id="sidebar-controls" class="panel-transition z-20 w-full sm:w-[410px] glass-panel shadow-2xl flex flex-col pointer-events-auto overflow-hidden
+      md:absolute md:bottom-5 md:left-4 md:rounded-3xl md:max-h-[82vh] md:border md:border-amber-500/25
+      rounded-t-3xl border-t border-amber-500/30 sheet-half">
+      
+      <!-- Mobile Drag Handle & Header -->
+      <div class="flex flex-col shrink-0 select-none cursor-pointer border-b border-stone-800/80 bg-stone-900/60 px-4 py-2" onclick="cycleMobileSheetState()">
+        <!-- Handle pill (Visible on Mobile) -->
+        <div class="w-10 h-1 bg-stone-600 hover:bg-amber-400 rounded-full mx-auto mb-1.5 md:hidden"></div>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-amber-400 text-xs sm:text-sm"></i>
+            <span class="text-xs font-bold text-amber-300">建築解構操作台</span>
+            <span id="sheet-mode-badge" class="text-[9px] px-1.5 py-0.2 rounded bg-stone-800 text-stone-400 border border-stone-700 md:hidden">半屏分離</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <!-- Mobile Toggle Sheet Size button -->
+            <button class="md:hidden text-stone-400 hover:text-amber-300 text-xs px-2 py-0.5 rounded bg-stone-800 border border-stone-700">
+              <span id="btn-sheet-text">收縮/展開</span>
+            </button>
+            <!-- Desktop minimize button -->
+            <button onclick="event.stopPropagation(); toggleSidebarPanel(false)" title="收合面板釋放全景" class="hidden md:flex w-7 h-7 rounded-lg bg-stone-800/80 hover:bg-stone-700 text-stone-400 hover:text-amber-300 items-center justify-center transition text-xs border border-stone-700">
+              <i class="fa-solid fa-chevron-down"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrollable content area inside the panel -->
+      <div class="overflow-y-auto px-3.5 py-3 sm:px-4 sm:py-3 flex flex-col gap-3 flex-1">
+        <!-- Mode selection tabs -->
+        <div class="grid grid-cols-3 gap-1.5 shrink-0">
+          <button id="btn-mode-explore" onclick="switchDeconstructMode('explore')" class="py-1.5 sm:py-2 px-1 rounded-xl text-[10px] sm:text-xs font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 bg-amber-500/30 text-amber-300 border border-amber-500/50">
+            <i class="fa-solid fa-layer-group"></i> <span>結構分層</span>
+          </button>
+          <button id="btn-mode-unified" onclick="switchDeconstructMode('unified')" class="py-1.5 sm:py-2 px-1 rounded-xl text-[10px] sm:text-xs font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 bg-stone-800/80 hover:bg-stone-700/60 text-stone-300 border border-stone-700">
+            <i class="fa-solid fa-cubes-stacked text-emerald-400"></i> <span>一體結構</span>
+          </button>
+          <button id="btn-mode-compare" onclick="switchDeconstructMode('compare')" class="py-1.5 sm:py-2 px-1 rounded-xl text-[10px] sm:text-xs font-semibold transition-all flex flex-col sm:flex-row items-center justify-center gap-1 bg-stone-800/80 hover:bg-stone-700/60 text-stone-300 border border-stone-700">
+            <i class="fa-solid fa-scale-balanced text-rose-400"></i> <span>真假對比</span>
+          </button>
+        </div>
+
+        <!-- Explode Slider & Quick Controls -->
+        <div id="explode-slider-panel" class="flex flex-col gap-2 bg-stone-900/60 p-2.5 sm:p-3 rounded-2xl border border-stone-800 shrink-0">
+          <div class="flex justify-between items-center text-xs">
+            <span class="text-stone-300 flex items-center gap-1.5 font-medium text-[11px] sm:text-xs">
+              <i class="fa-solid fa-up-down text-amber-400"></i>
+              <span>升降分層 (Exploded View)</span>
+            </span>
+            <span id="explode-val-text" class="text-amber-400 font-mono font-bold">0%</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] text-stone-400 shrink-0">合攏</span>
+            <input id="slider-explode" type="range" min="0" max="100" value="0" step="1" oninput="onExplodeChange(this.value)" class="w-full accent-amber-500 h-2 bg-stone-800 rounded-lg cursor-pointer">
+            <span class="text-[10px] text-stone-400 shrink-0">展開</span>
+          </div>
+
+          <!-- Quick Layer toggles -->
+          <div class="flex flex-wrap gap-1.5 pt-0.5 text-[10px] sm:text-[11px]">
+            <button onclick="setLayerFilter('all')" class="layer-pill active px-2 py-1 rounded-lg bg-amber-600/40 text-amber-300 border border-amber-500/50">全殿顯示</button>
+            <button onclick="setLayerFilter('upperRoof')" class="layer-pill px-2 py-1 rounded-lg bg-stone-800 text-stone-300 border border-stone-700">中央歇山頂</button>
+            <button onclick="setLayerFilter('tongZhu')" class="layer-pill px-2 py-1 rounded-lg bg-stone-800 text-stone-300 border border-stone-700">童柱牌樓面</button>
+            <button onclick="setLayerFilter('mainBeams')" class="layer-pill px-2 py-1 rounded-lg bg-stone-800 text-stone-300 border border-stone-700">大通樑桁架</button>
+            <button onclick="setLayerFilter('lowerRoof')" class="layer-pill px-2 py-1 rounded-lg bg-stone-800 text-stone-300 border border-stone-700">硬山雙坡底座</button>
+            <button onclick="toggleHighlightLoadPath()" id="btn-highlight-loadpath" class="px-2 py-1 rounded-lg bg-amber-700/60 text-amber-200 border border-amber-400/60 font-medium hover:bg-amber-600 transition flex items-center gap-1">
+              <i class="fa-solid fa-arrows-down-to-line"></i>傳力路徑高亮
+            </button>
+            <button onclick="toggleHighlightEaves()" id="btn-highlight-eaves" class="px-2 py-1 rounded-lg bg-stone-800 text-stone-300 border border-stone-700 font-medium">
+              <i class="fa-solid fa-highlighter mr-1"></i>雙簷高亮
+            </button>
+          </div>
+        </div>
+
+        <!-- Mobile Quick View Switcher (Only shown on small screens) -->
+        <div class="md:hidden flex items-center justify-between gap-1 overflow-x-auto pb-1 text-[10px] shrink-0">
+          <span class="text-stone-400 font-medium shrink-0">視角：</span>
+          <button onclick="setCameraView('front')" class="px-2 py-1 rounded bg-stone-800 text-stone-300 shrink-0 border border-stone-700">正面</button>
+          <button onclick="setCameraView('side')" class="px-2 py-1 rounded bg-stone-800 text-stone-300 shrink-0 border border-stone-700">山花</button>
+          <button onclick="setCameraView('eaves')" class="px-2 py-1 rounded bg-stone-800 text-stone-300 shrink-0 border border-stone-700">雙簷</button>
+          <button onclick="setCameraView('under')" class="px-2 py-1 rounded bg-stone-800 text-stone-300 shrink-0 border border-stone-700">殿內仰望</button>
+          <button onclick="setCameraView('top')" class="px-2 py-1 rounded bg-stone-800 text-stone-300 shrink-0 border border-stone-700">鳥瞰</button>
+        </div>
+
+        <!-- Unified Structure panel (Explanation) -->
+        <div id="unified-panel" class="hidden text-xs bg-emerald-950/70 border border-emerald-500/40 p-2.5 sm:p-3 rounded-2xl flex flex-col gap-1.5">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-emerald-300 flex items-center gap-1.5 text-[11px] sm:text-xs">
+              <i class="fa-solid fa-sitemap"></i> 同一大木結構特徵：
+            </span>
+          </div>
+          <p class="text-stone-300 leading-relaxed text-[10px] sm:text-[11px]">
+            景福宮的「假四垂」<strong>絕非事後加蓋在硬山頂上的獨立小亭</strong>，而是在建造時即將<strong>硬山大通樑、壽樑、立在樑上的「童柱」與貫通全殿的檁條結合成單一連續力學桁架</strong>。中央童柱直接榫接在壽樑之上挑起上層歇山檁條，兩側硬山檁條則直通山牆，前後椽木緊密咬合，展現彬派大木作一體營造之精妙！
+          </p>
+        </div>
+
+        <!-- Comparison description strip -->
+        <div id="compare-panel" class="hidden text-xs bg-stone-900/90 border border-rose-500/50 p-2.5 sm:p-3 rounded-2xl flex flex-col gap-1.5">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-rose-300 flex items-center gap-1.5 text-[11px] sm:text-xs">
+              <i class="fa-solid fa-circle-question"></i> 真四垂 vs 假四垂關鍵區別：
+            </span>
+          </div>
+          <p class="text-stone-300 leading-relaxed text-[10px] sm:text-[11px]">
+            若為「真四垂」，必須有四根<strong>從地面直通上層屋頂的巨大金柱（通天柱）</strong>（即畫面紅色高亮柱），這會直接貫穿大殿正中；而景福宮採用的「假四垂」，部分上簷構件由立在樑架上的短柱承接，短柱不直接落地，重量由下方樑架平穩傳遞至地面柱，拜殿空間因此開闊敞亮。
+          </p>
+        </div>
+
+        <!-- Load Path Info Strip -->
+        <div id="loadpath-panel" class="hidden text-xs bg-amber-950/80 border border-amber-500/60 p-2.5 sm:p-3 rounded-2xl flex flex-col gap-1.5">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-amber-300 flex items-center gap-1 text-[10px] sm:text-[11px]">
+              <i class="fa-solid fa-route text-amber-400"></i> 短柱重力傳遞路徑（Load Path）：
+            </span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono">三段連貫承重</span>
+          </div>
+          <div class="flex items-center justify-between text-[9px] sm:text-[10px] font-semibold text-amber-200 py-0.5">
+            <span class="px-1.5 py-0.5 bg-amber-500/30 rounded border border-amber-400/50">① 短柱（童柱）</span>
+            <i class="fa-solid fa-arrow-right text-stone-400 text-[9px]"></i>
+            <span class="px-1.5 py-0.5 bg-amber-500/30 rounded border border-amber-400/50">② 下方樑架</span>
+            <i class="fa-solid fa-arrow-right text-stone-400 text-[9px]"></i>
+            <span class="px-1.5 py-0.5 bg-amber-500/30 rounded border border-amber-400/50">③ 落地主要柱</span>
+          </div>
+          <p class="text-stone-300 leading-relaxed text-[10px]">
+            短柱不直接落地，合攏時柱底之<strong>管腳榫牢牢坐入樑上坐斗接點</strong>，將上部載重先傳遞給壽樑與大通樑，最後分散至地面落地金柱。
+          </p>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Hotspots Elements container in 2D Screen space -->
+  <div id="hotspots-container" class="pointer-events-none"></div>
+
+  <script>
+    // --- Global Variables ---
+    let scene, camera, renderer, controls;
+    let templeGroup, lowerRoofGroup, tongZhuGroup, upperRoofGroup, mainBeamsGroup, columnsGroup;
+    let comparisonPillarsGroup;
+    let currentMode = 'explore'; // 'explore', 'unified', 'compare'
+    let explodeDistance = 0;
+    let isDay = true;
+    let isWireframe = false;
+    let highlightEavesActive = false;
+    let highlightLoadPathActive = false;
+    let jointNodesGroup;
+    let dirLight, hemiLight, ambientLight, templeInteriorLight;
+
+    // Mobile Sheet States: 'collapsed' (just header), 'half' (split 50/50), 'full' (75%)
+    let mobileSheetState = 'half';
+
+    // Hotspot definitions with 3D anchors
+    const hotspotsData = [
+      {
+        id: 1,
+        title: "正脊雙龍朝三星剪黏",
+        tag: "屋脊藝術",
+        desc: "歇山正脊中央飾有福祿壽三星剪黏，兩側飛揚起翹的燕尾搭配雙龍護珠剪黏，形塑出景福宮極具威嚴與福瑞的天際線。",
+        pos: new THREE.Vector3(0, 14.5, 0)
+      },
+      {
+        id: 2,
+        title: "牌樓面金木雕與看架斗栱",
+        tag: "假四垂關鍵",
+        desc: "位於上簷與下簷之間的高差垂直立面，排滿金漆人物神將花板與網目斗栱，既遮蔽了上層屋架，又創造出金碧輝煌的殿宇立面。",
+        pos: new THREE.Vector3(0, 8.4, 4.3)
+      },
+      {
+        id: 3,
+        title: "支撐上簷的短柱（童柱）",
+        tag: "傳力承重關鍵",
+        desc: "假四垂屋頂的部分上簷構件，可由立在下層樑架上的短柱支撐。這些短柱不直接落地，而由下方樑架承托，將重量傳給下方樑架，再由主要柱子傳至地面。",
+        pos: new THREE.Vector3(4.2, 7.8, 3.8)
+      },
+      {
+        id: 4,
+        title: "大通樑與金瓜筒",
+        tag: "彬派大木作",
+        desc: "大通樑上趴著圓潤飽滿、雙腳包樑的「金瓜筒」（瓜柱），層層疊斗向外挑出，展現陳應彬大師純熟渾厚的大木雕刻風範。",
+        pos: new THREE.Vector3(2.2, 5.8, 3.8)
+      },
+      {
+        id: 5,
+        title: "硬山雙坡底座與山牆",
+        tag: "基底屋頂",
+        desc: "下層為前後完整的兩坡水硬山式大屋頂，兩側直通山牆馬背，中央向上升起歇山頂，兩者在一體化榫卯桁條中牢固交織。",
+        pos: new THREE.Vector3(8.5, 6.2, 3.5)
+      }
+    ];
+
+    // --- Materials Palette ---
+    let tileUpperMat, tileLowerMat, woodDarkMat, columnRedMat, brightGoldMat, ridgeGreenMat, ridgeCyanMat, redWallMat, lanternRedMat, pailouMat;
+
+    function initMaterials() {
+      // 屋瓦材質 (溫潤橙紅磚瓦色)
+      tileUpperMat = new THREE.MeshStandardMaterial({
+        color: 0xc45828,
+        roughness: 0.55,
+        metalness: 0.08,
+        side: THREE.DoubleSide
+      });
+      tileLowerMat = new THREE.MeshStandardMaterial({
+        color: 0xba4f22,
+        roughness: 0.58,
+        metalness: 0.08,
+        side: THREE.DoubleSide
+      });
+      // 檜木/黑檀大樑架
+      woodDarkMat = new THREE.MeshStandardMaterial({
+        color: 0x4a2810,
+        roughness: 0.72,
+        metalness: 0.05
+      });
+      // 硃砂紅漆大柱
+      columnRedMat = new THREE.MeshStandardMaterial({
+        color: 0x991b1b,
+        roughness: 0.28,
+        metalness: 0.15
+      });
+      // 擂金貼金雕飾 (金瓜筒、童柱、斗栱)
+      brightGoldMat = new THREE.MeshStandardMaterial({
+        color: 0xf59e0b,
+        roughness: 0.32,
+        metalness: 0.78
+      });
+      // 剪黏與屋脊綠青色
+      ridgeGreenMat = new THREE.MeshStandardMaterial({
+        color: 0x15803d,
+        roughness: 0.45,
+        metalness: 0.15
+      });
+      // 燕尾天藍色
+      ridgeCyanMat = new THREE.MeshStandardMaterial({
+        color: 0x0284c7,
+        roughness: 0.38,
+        metalness: 0.2
+      });
+      // 山牆紅磚
+      redWallMat = new THREE.MeshStandardMaterial({
+        color: 0x9f1239,
+        roughness: 0.8
+      });
+      // 大紅宮燈
+      lanternRedMat = new THREE.MeshStandardMaterial({
+        color: 0xdc2626,
+        roughness: 0.35,
+        emissive: 0x7f1d1d,
+        emissiveIntensity: 0.5
+      });
+      // 牌樓面金漆
+      pailouMat = new THREE.MeshStandardMaterial({
+        color: 0xd97706,
+        roughness: 0.35,
+        metalness: 0.5
+      });
+    }
+
+    function initScene() {
+      const container = document.getElementById('canvas-container');
+      const width = container.clientWidth || window.innerWidth;
+      const height = container.clientHeight || window.innerHeight;
+
+      // 1. Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x11100f);
+      scene.fog = new THREE.FogExp2(0x11100f, 0.015);
+
+      // 2. Camera
+      camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+      camera.position.set(22, 16, 26);
+
+      // 3. Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
+      container.appendChild(renderer.domElement);
+
+      // 4. Orbit Controls
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI / 2 + 0.05; // allow slightly below ground
+      controls.minDistance = 6;
+      controls.maxDistance = 75;
+      controls.target.set(0, 7.5, 0);
+
+      // 5. Lighting
+      ambientLight = new THREE.AmbientLight(0xffedd5, 0.7);
+      scene.add(ambientLight);
+
+      hemiLight = new THREE.HemisphereLight(0xfffbeb, 0x1c1917, 0.6);
+      scene.add(hemiLight);
+
+      dirLight = new THREE.DirectionalLight(0xffedd5, 1.4);
+      dirLight.position.set(28, 38, 22);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 2048;
+      dirLight.shadow.mapSize.height = 2048;
+      dirLight.shadow.camera.near = 0.5;
+      dirLight.shadow.camera.far = 100;
+      const d = 25;
+      dirLight.shadow.camera.left = -d;
+      dirLight.shadow.camera.right = d;
+      dirLight.shadow.camera.top = d;
+      dirLight.shadow.camera.bottom = -d;
+      scene.add(dirLight);
+
+      templeInteriorLight = new THREE.PointLight(0xf59e0b, 1.2, 22);
+      templeInteriorLight.position.set(0, 5, 0);
+      scene.add(templeInteriorLight);
+
+      // 6. Ground & Stone Platform (台基)
+      const groundGeo = new THREE.PlaneGeometry(160, 160);
+      const groundMat = new THREE.MeshStandardMaterial({ color: 0x1c1917, roughness: 0.95 });
+      const ground = new THREE.Mesh(groundGeo, groundMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -0.05;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      const podiumGeo = new THREE.BoxGeometry(29, 0.9, 25);
+      const podiumMat = new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.85 });
+      const podium = new THREE.Mesh(podiumGeo, podiumMat);
+      podium.position.y = 0.45;
+      podium.receiveShadow = true;
+      scene.add(podium);
+
+      // 7. Initialize Materials & Build Temple
+      initMaterials();
+      buildJingfuTemple();
+
+      // 8. Build Hotspot Markers in 2D DOM
+      createHotspotElements();
+
+      // 9. Window Resizing & Event Listeners
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    function buildJingfuTemple() {
+      templeGroup = new THREE.Group();
+      templeGroup.name = "templeGroup";
+
+      const mainColX = 4.2;      // 金柱跨度半寬
+      const mainColZ = 3.8;      // 金柱進深半寬
+      const outerSpanX = 8.5;    // 檐柱跨度半寬
+      const outerSpanZ = 7.6;    // 檐柱進深半寬
+      const colHeight = 5.2;     // 柱高
+      const outerColHeight = 4.4;
+
+      // ==========================================
+      // 1. 地面立柱群 (COLUMNS LAYER)
+      // ==========================================
+      columnsGroup = new THREE.Group();
+      columnsGroup.name = "columns";
+
+      // 四點金柱 (內圈大紅金字柱)
+      const colGeo = new THREE.CylinderGeometry(0.42, 0.45, colHeight, 20);
+      const baseGeo = new THREE.CylinderGeometry(0.55, 0.65, 0.35, 16);
+      const stoneBaseMat = new THREE.MeshStandardMaterial({ color: 0x78716c, roughness: 0.85 });
+
+      const mainColCoords = [
+        [-mainColX, -mainColZ],
+        [ mainColX, -mainColZ],
+        [-mainColX,  mainColZ],
+        [ mainColX,  mainColZ]
+      ];
+
+      mainColCoords.forEach(([cx, cz]) => {
+        const cMesh = new THREE.Mesh(colGeo, columnRedMat);
+        cMesh.position.set(cx, colHeight / 2 + 0.9, cz);
+        cMesh.castShadow = true;
+        cMesh.receiveShadow = true;
+        columnsGroup.add(cMesh);
+
+        // 柱礎 (Stone Base)
+        const bMesh = new THREE.Mesh(baseGeo, stoneBaseMat);
+        bMesh.position.set(cx, 0.9 + 0.175, cz);
+        bMesh.receiveShadow = true;
+        columnsGroup.add(bMesh);
+
+        // 柱頭金飾
+        const topRing = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.06, 8, 20), brightGoldMat);
+        topRing.rotation.x = Math.PI / 2;
+        topRing.position.set(cx, colHeight + 0.85, cz);
+        columnsGroup.add(topRing);
+      });
+
+      // 外圈簷柱 (副階外廊柱)
+      const outerColGeo = new THREE.CylinderGeometry(0.35, 0.38, outerColHeight, 16);
+      const outerPositions = [
+        [-outerSpanX, -outerSpanZ], [0, -outerSpanZ], [outerSpanX, -outerSpanZ],
+        [-outerSpanX,  outerSpanZ], [0,  outerSpanZ], [outerSpanX,  outerSpanZ],
+        [-outerSpanX, 0], [outerSpanX, 0]
+      ];
+
+      outerPositions.forEach(([ox, oz]) => {
+        const oCol = new THREE.Mesh(outerColGeo, columnRedMat);
+        oCol.position.set(ox, outerColHeight / 2 + 0.9, oz);
+        oCol.castShadow = true;
+        columnsGroup.add(oCol);
+
+        const oBase = new THREE.Mesh(baseGeo, stoneBaseMat);
+        oBase.position.set(ox, 0.9 + 0.175, oz);
+        columnsGroup.add(oBase);
+      });
+
+      templeGroup.add(columnsGroup);
+
+      // ==========================================
+      // 2. 一體化通樑桁架 (MAIN BEAMS & TIE TRUSS)
+      // ==========================================
+      mainBeamsGroup = new THREE.Group();
+      mainBeamsGroup.name = "mainBeams";
+
+      // 縱向壽樑 (Shou Liang - 承載童柱的核心主樑)
+      const shouLiangGeo = new THREE.BoxGeometry(0.65, 0.85, mainColZ * 2 + 1.4);
+      const shouLiangL = new THREE.Mesh(shouLiangGeo, woodDarkMat);
+      shouLiangL.position.set(-mainColX, colHeight + 0.35, 0);
+      shouLiangL.castShadow = true;
+      mainBeamsGroup.add(shouLiangL);
+
+      const shouLiangR = new THREE.Mesh(shouLiangGeo, woodDarkMat);
+      shouLiangR.position.set(mainColX, colHeight + 0.35, 0);
+      shouLiangR.castShadow = true;
+      mainBeamsGroup.add(shouLiangR);
+
+      // 橫向大通樑 (Da Tong)
+      const daTongGeoX = new THREE.BoxGeometry(mainColX * 2 + 1.4, 0.85, 0.65);
+      const daTongFront = new THREE.Mesh(daTongGeoX, woodDarkMat);
+      daTongFront.position.set(0, colHeight + 0.35, mainColZ);
+      daTongFront.castShadow = true;
+      mainBeamsGroup.add(daTongFront);
+
+      const daTongBack = new THREE.Mesh(daTongGeoX, woodDarkMat);
+      daTongBack.position.set(0, colHeight + 0.35, -mainColZ);
+      daTongBack.castShadow = true;
+      mainBeamsGroup.add(daTongBack);
+
+      // 金瓜筒 (Melon Struts - 彬派招牌)
+      [-2.1, 0, 2.1].forEach(gx => {
+        [-mainColZ, mainColZ].forEach(gz => {
+          const melonGeo = new THREE.SphereGeometry(0.36, 16, 12);
+          melonGeo.scale(1, 0.85, 1);
+          const melon = new THREE.Mesh(melonGeo, brightGoldMat);
+          melon.position.set(gx, colHeight + 0.95, gz);
+          mainBeamsGroup.add(melon);
+
+          const claw = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.35, 0.7), brightGoldMat);
+          claw.position.set(gx, colHeight + 0.7, gz);
+          mainBeamsGroup.add(claw);
+
+          const dou = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.18, 0.55), brightGoldMat);
+          dou.position.set(gx, colHeight + 1.35, gz);
+          mainBeamsGroup.add(dou);
+        });
+      });
+
+      // 橫向貫穿全殿的桁條（檁條）- 展現建造時為同一連續結構
+      const yingSpanX = 12.8;   // 硬山整殿總面寬之半
+      [-outerSpanZ, -mainColZ, 0, mainColZ, outerSpanZ].forEach(pz => {
+        const purlinGeo = new THREE.CylinderGeometry(0.16, 0.16, yingSpanX * 2 + 2, 12);
+        const purlinMat = new THREE.MeshStandardMaterial({ color: 0x5c2b14, roughness: 0.7 });
+        const purlin = new THREE.Mesh(purlinGeo, purlinMat);
+        purlin.rotation.z = Math.PI / 2;
+        purlin.position.set(0, colHeight + 0.75, pz);
+        mainBeamsGroup.add(purlin);
+      });
+
+      templeGroup.add(mainBeamsGroup);
+
+      // ==========================================
+      // 3. 嚴格向量定向瓦壟產生器 (NO V-SHAPE DIVERGENCE)
+      // ==========================================
+      function createTileSlopes(targetGroup, xStart, xEnd, yTop, zTop, yBot, zBot, numRidges, mat) {
+        // A. 鋪面平板 (Smooth Roof Plate)
+        const slopeGeo = new THREE.BufferGeometry();
+        const verts = new Float32Array([
+          xStart, yTop, zTop,
+          xEnd,   yTop, zTop,
+          xEnd,   yBot, zBot,
+
+          xStart, yTop, zTop,
+          xEnd,   yBot, zBot,
+          xStart, yBot, zBot
+        ]);
+        slopeGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        slopeGeo.computeVertexNormals();
+        const slopeMesh = new THREE.Mesh(slopeGeo, mat);
+        slopeMesh.castShadow = true;
+        slopeMesh.receiveShadow = true;
+        targetGroup.add(slopeMesh);
+
+        // B. 嚴格由高向低向量對齊的立體瓦壟 (Ridges strictly following roof pitch)
+        const dir = new THREE.Vector3(0, yBot - yTop, zBot - zTop);
+        const length = dir.length();
+        const normDir = dir.clone().normalize();
+        const upVec = new THREE.Vector3(0, 1, 0);
+        const quat = new THREE.Quaternion().setFromUnitVectors(upVec, normDir);
+
+        const step = (xEnd - xStart) / Math.max(1, numRidges - 1);
+        for (let i = 0; i < numRidges; i++) {
+          const rx = xStart + i * step;
+          const ridgeGeo = new THREE.CylinderGeometry(0.065, 0.065, length, 8);
+          const ridgeMesh = new THREE.Mesh(ridgeGeo, mat);
+
+          ridgeMesh.position.set(
+            rx,
+            (yTop + yBot) / 2 + 0.06,
+            (zTop + zBot) / 2
+          );
+          ridgeMesh.quaternion.copy(quat);
+          ridgeMesh.castShadow = true;
+          targetGroup.add(ridgeMesh);
+        }
+      }
+
+      // ==========================================
+      // 4. 硬山式底座屋頂 (LOWER BASE ROOF)
+      // 特徵：前後貫通兩坡水、左右為硬山山牆馬背、中央向上開口由假四垂覆蓋
+      // ==========================================
+      lowerRoofGroup = new THREE.Group();
+      lowerRoofGroup.name = "lowerRoof";
+
+      const yingSpanZ = 10.4;   // 進深前後簷口位置
+      const yingRidgeY = 7.4;   // 硬山主脊高度
+      const yingEaveY = 4.3;    // 硬山前後簷口高度
+      const centralBayX = 4.6;  // 中央明間（假四垂升起半寬）
+
+      // 4A. 前坡硬山屋頂（次間 + 中央明間承接牌樓面）
+      createTileSlopes(lowerRoofGroup, -yingSpanX, -centralBayX, yingRidgeY, 0.6, yingEaveY, yingSpanZ, 14, tileLowerMat);
+      createTileSlopes(lowerRoofGroup, centralBayX, yingSpanX, yingRidgeY, 0.6, yingEaveY, yingSpanZ, 14, tileLowerMat);
+      createTileSlopes(lowerRoofGroup, -centralBayX, centralBayX, 6.2, 4.3, yingEaveY, yingSpanZ, 16, tileLowerMat);
+
+      // 4B. 後坡硬山屋頂
+      createTileSlopes(lowerRoofGroup, -yingSpanX, -centralBayX, yingRidgeY, -0.6, yingEaveY, -yingSpanZ, 14, tileLowerMat);
+      createTileSlopes(lowerRoofGroup, centralBayX, yingSpanX, yingRidgeY, -0.6, yingEaveY, -yingSpanZ, 14, tileLowerMat);
+      createTileSlopes(lowerRoofGroup, -centralBayX, centralBayX, 6.2, -4.3, yingEaveY, -yingSpanZ, 16, tileLowerMat);
+
+      // 4C. 兩側硬山山牆（馬背）與次間正脊
+      [-1, 1].forEach(side => {
+        // 次間硬山正脊
+        const ridgeLen = yingSpanX - centralBayX;
+        const ridgeGeo = new THREE.CylinderGeometry(0.24, 0.24, ridgeLen, 8);
+        const rMesh = new THREE.Mesh(ridgeGeo, ridgeGreenMat);
+        rMesh.rotation.z = Math.PI / 2;
+        rMesh.position.set(side * (centralBayX + ridgeLen / 2), yingRidgeY + 0.12, 0);
+        lowerRoofGroup.add(rMesh);
+
+        // 硬山山牆磚面 (Gable wall)
+        const gableGeo = new THREE.BufferGeometry();
+        const gv = new Float32Array([
+          side * yingSpanX, yingRidgeY, 0,
+          side * yingSpanX, yingEaveY,  yingSpanZ,
+          side * yingSpanX, yingEaveY, -yingSpanZ
+        ]);
+        gableGeo.setAttribute('position', new THREE.BufferAttribute(gv, 3));
+        gableGeo.computeVertexNormals();
+        const gableMesh = new THREE.Mesh(gableGeo, redWallMat);
+        lowerRoofGroup.add(gableMesh);
+
+        // 馬背滾邊 (Gable border)
+        const gb1 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, yingSpanZ * 1.05), ridgeCyanMat);
+        gb1.position.set(side * (yingSpanX + 0.08), (yingRidgeY + yingEaveY) / 2, yingSpanZ / 2);
+        gb1.rotation.x = 0.32;
+        lowerRoofGroup.add(gb1);
+
+        const gb2 = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, yingSpanZ * 1.05), ridgeCyanMat);
+        gb2.position.set(side * (yingSpanX + 0.08), (yingRidgeY + yingEaveY) / 2, -yingSpanZ / 2);
+        gb2.rotation.x = -0.32;
+        lowerRoofGroup.add(gb2);
+      });
+
+      // 下簷前後青磚滴水緣
+      const eBorderGeo = new THREE.BoxGeometry(yingSpanX * 2 + 0.4, 0.22, 0.32);
+      const ebf = new THREE.Mesh(eBorderGeo, ridgeCyanMat);
+      ebf.position.set(0, yingEaveY - 0.04, yingSpanZ);
+      lowerRoofGroup.add(ebf);
+
+      const ebb = new THREE.Mesh(eBorderGeo, ridgeCyanMat);
+      ebb.position.set(0, yingEaveY - 0.04, -yingSpanZ);
+      lowerRoofGroup.add(ebb);
+
+      // 下簷步口大紅宮燈群 (依實景圖 88)
+      const lanternGeo = new THREE.SphereGeometry(0.42, 16, 12);
+      lanternGeo.scale(1.15, 0.95, 1.15);
+      [-7.2, -4.5, -1.5, 1.5, 4.5, 7.2].forEach(lx => {
+        const lGroup = new THREE.Group();
+        const lMesh = new THREE.Mesh(lanternGeo, lanternRedMat);
+        lGroup.add(lMesh);
+        const topCap = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.28, 0.1, 10), brightGoldMat);
+        topCap.position.y = 0.4;
+        lGroup.add(topCap);
+        const tassel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.08, 0.35, 6), brightGoldMat);
+        tassel.position.y = -0.6;
+        lGroup.add(tassel);
+        lGroup.position.set(lx, 3.5, yingSpanZ - 0.3);
+        lowerRoofGroup.add(lGroup);
+      });
+
+      templeGroup.add(lowerRoofGroup);
+
+      // ==========================================
+      // 5. 童柱與牌樓面看架 (TONG ZHU & PAILOU)
+      // 這是假四垂的核心骨幹：童柱直接咬合在壽樑之上！
+      // ==========================================
+      tongZhuGroup = new THREE.Group();
+      tongZhuGroup.name = "tongZhu";
+
+      const tongZhuHeight = 2.9;
+      const tongZhuGeo = new THREE.CylinderGeometry(0.35, 0.38, tongZhuHeight, 16);
+
+      const tongZhuPositions = [
+        [-mainColX, colHeight + 0.8 + tongZhuHeight / 2, -mainColZ],
+        [ mainColX, colHeight + 0.8 + tongZhuHeight / 2, -mainColZ],
+        [-mainColX, colHeight + 0.8 + tongZhuHeight / 2,  mainColZ],
+        [ mainColX, colHeight + 0.8 + tongZhuHeight / 2,  mainColZ]
+      ];
+
+      jointNodesGroup = new THREE.Group();
+      jointNodesGroup.name = "jointNodes";
+
+      tongZhuPositions.forEach(([tx, ty, tz]) => {
+        // 短柱本體
+        const tzMesh = new THREE.Mesh(tongZhuGeo, brightGoldMat);
+        tzMesh.position.set(tx, ty, tz);
+        tzMesh.castShadow = true;
+        tongZhuGroup.add(tzMesh);
+
+        // 短柱底端突出的管腳榫頭 (Tenon Pin)
+        const tenonPin = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.38, 12), woodDarkMat);
+        tenonPin.position.set(tx, ty - tongZhuHeight / 2 - 0.15, tz);
+        tongZhuGroup.add(tenonPin);
+
+        // 樑上承托接點：雕花坐斗 (Mortise Base Socket on Shou Liang)
+        const seatBox = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.42, 0.95), woodDarkMat);
+        seatBox.position.set(tx, colHeight + 0.78, tz);
+        seatBox.castShadow = true;
+        mainBeamsGroup.add(seatBox);
+
+        // 接點金箍口緣 (強調合攏時之榫卯接點位置)
+        const socketRing = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.12, 0.78), brightGoldMat);
+        socketRing.position.set(tx, colHeight + 0.98, tz);
+        mainBeamsGroup.add(socketRing);
+
+        // 接點外觀示意發光光環 (合攏與高亮時清晰辨認)
+        const jointHalo = new THREE.Mesh(
+          new THREE.TorusGeometry(0.55, 0.06, 12, 24),
+          new THREE.MeshStandardMaterial({
+            color: 0xf59e0b,
+            emissive: 0xf59e0b,
+            emissiveIntensity: 0.9,
+            roughness: 0.2
+          })
+        );
+        jointHalo.rotation.x = Math.PI / 2;
+        jointHalo.position.set(tx, colHeight + 1.02, tz);
+        jointNodesGroup.add(jointHalo);
+
+        // 頂部出挑疊斗
+        for (let l = 0; l < 3; l++) {
+          const tier = new THREE.Mesh(new THREE.BoxGeometry(0.8 + l * 0.35, 0.22, 0.8 + l * 0.35), brightGoldMat);
+          tier.position.set(tx, ty + tongZhuHeight / 2 + 0.15 + l * 0.22, tz);
+          tongZhuGroup.add(tier);
+        }
+      });
+
+      templeGroup.add(jointNodesGroup);
+
+      // 牌樓面看架（金漆雕刻花板，封閉垂直高差）
+      function buildPailouRow(zPos) {
+        const rowGroup = new THREE.Group();
+        const span = mainColX * 2 + 0.6;
+        const count = 12;
+        const step = span / (count - 1);
+        for (let i = 0; i < count; i++) {
+          const x = -span / 2 + i * step;
+          const fig = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.85, 8), brightGoldMat);
+          fig.position.set(x, colHeight + 2.35, zPos + (zPos > 0 ? 0.08 : -0.08));
+          rowGroup.add(fig);
+
+          const dou = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.35, 0.35), pailouMat);
+          dou.position.set(x, colHeight + 1.8, zPos);
+          rowGroup.add(dou);
+        }
+        const b1 = new THREE.Mesh(new THREE.BoxGeometry(span + 0.4, 0.2, 0.3), woodDarkMat);
+        b1.position.set(0, colHeight + 1.5, zPos);
+        rowGroup.add(b1);
+
+        const b2 = new THREE.Mesh(new THREE.BoxGeometry(span + 0.4, 0.2, 0.3), woodDarkMat);
+        b2.position.set(0, colHeight + 3.1, zPos);
+        rowGroup.add(b2);
+        return rowGroup;
+      }
+      tongZhuGroup.add(buildPailouRow(mainColZ));
+      tongZhuGroup.add(buildPailouRow(-mainColZ));
+
+      templeGroup.add(tongZhuGroup);
+
+      // ==========================================
+      // 6. 中央升起之歇山頂 (UPPER XIESHAN ROOF)
+      // 四阿出挑、歇山九脊、燕尾飛揚
+      // ==========================================
+      upperRoofGroup = new THREE.Group();
+      upperRoofGroup.name = "upperRoof";
+
+      const upBaseY = colHeight + 0.8 + tongZhuHeight + 0.3; // ~9.2m
+      const upRidgeY = upBaseY + 4.8;                        // ~14.0m
+      const upSpanX = 6.2;                                   // 上簷翼角挑出半寬
+      const upSpanZ = 5.6;                                   // 上簷前後進深半寬
+      const ridgeLenX = 3.8;                                 // 正脊長度半寬
+
+      // 6A. 上層歇山頂前後大坡
+      createTileSlopes(upperRoofGroup, -ridgeLenX, ridgeLenX, upRidgeY, 0, upBaseY, upSpanZ, 18, tileUpperMat);
+      createTileSlopes(upperRoofGroup, -ridgeLenX, ridgeLenX, upRidgeY, 0, upBaseY, -upSpanZ, 18, tileUpperMat);
+
+      // 6B. 歇山頂左右阿坡
+      const sideMidY = upBaseY + 2.2;
+      const sideMidZ = upSpanZ * 0.55;
+
+      // 左側阿坡
+      const leftSlopeGeo = new THREE.BufferGeometry();
+      const lsv = new Float32Array([
+        -ridgeLenX, sideMidY,  sideMidZ,
+        -upSpanX,   upBaseY,   upSpanZ,
+        -upSpanX,   upBaseY,  -upSpanZ,
+
+        -ridgeLenX, sideMidY,  sideMidZ,
+        -upSpanX,   upBaseY,  -upSpanZ,
+        -ridgeLenX, sideMidY, -sideMidZ
+      ]);
+      leftSlopeGeo.setAttribute('position', new THREE.BufferAttribute(lsv, 3));
+      leftSlopeGeo.computeVertexNormals();
+      const leftSlopeMesh = new THREE.Mesh(leftSlopeGeo, tileUpperMat);
+      leftSlopeMesh.castShadow = true;
+      upperRoofGroup.add(leftSlopeMesh);
+
+      // 右側阿坡
+      const rightSlopeGeo = new THREE.BufferGeometry();
+      const rsv = new Float32Array([
+         ridgeLenX, sideMidY,  sideMidZ,
+         upSpanX,   upBaseY,  -upSpanZ,
+         upSpanX,   upBaseY,   upSpanZ,
+
+         ridgeLenX, sideMidY,  sideMidZ,
+         ridgeLenX, sideMidY, -sideMidZ,
+         upSpanX,   upBaseY,  -upSpanZ
+      ]);
+      rightSlopeGeo.setAttribute('position', new THREE.BufferAttribute(rsv, 3));
+      rightSlopeGeo.computeVertexNormals();
+      const rightSlopeMesh = new THREE.Mesh(rightSlopeGeo, tileUpperMat);
+      rightSlopeMesh.castShadow = true;
+      upperRoofGroup.add(rightSlopeMesh);
+
+      // 6C. 歇山山花（博風板、懸魚）
+      [-1, 1].forEach(side => {
+        const shGeo = new THREE.BufferGeometry();
+        const shv = new Float32Array([
+          side * ridgeLenX, upRidgeY, 0,
+          side * ridgeLenX, sideMidY,  sideMidZ,
+          side * ridgeLenX, sideMidY, -sideMidZ
+        ]);
+        shGeo.setAttribute('position', new THREE.BufferAttribute(shv, 3));
+        shGeo.computeVertexNormals();
+        const shMesh = new THREE.Mesh(shGeo, redWallMat);
+        upperRoofGroup.add(shMesh);
+
+        // 懸魚 (Golden Fish Pendant)
+        const fish = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.1, 5), brightGoldMat);
+        fish.rotation.z = side * Math.PI;
+        fish.position.set(side * (ridgeLenX + 0.05), upRidgeY - 1.0, 0);
+        upperRoofGroup.add(fish);
+      });
+
+      // 6D. 燕尾正脊與剪黏 (Swallowtail Ridge)
+      const mainRidgeCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-ridgeLenX - 1.4, upRidgeY + 1.35, 0),
+        new THREE.Vector3(-ridgeLenX - 0.4, upRidgeY + 0.35, 0),
+        new THREE.Vector3(0, upRidgeY + 0.08, 0),
+        new THREE.Vector3(ridgeLenX + 0.4, upRidgeY + 0.35, 0),
+        new THREE.Vector3(ridgeLenX + 1.4, upRidgeY + 1.35, 0)
+      ]);
+      const ridgeTube = new THREE.Mesh(new THREE.TubeGeometry(mainRidgeCurve, 28, 0.32, 10, false), ridgeCyanMat);
+      upperRoofGroup.add(ridgeTube);
+
+      // 福祿壽三星剪黏
+      const godsGroup = new THREE.Group();
+      [-0.4, 0, 0.4].forEach((gx, idx) => {
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.75, 8), idx === 1 ? brightGoldMat : (idx === 0 ? lanternRedMat : ridgeCyanMat));
+        body.position.set(gx, 0.38, 0);
+        godsGroup.add(body);
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), new THREE.MeshStandardMaterial({ color: 0xfde68a }));
+        head.position.set(gx, 0.82, 0);
+        godsGroup.add(head);
+      });
+      godsGroup.position.set(0, upRidgeY + 0.25, 0);
+      upperRoofGroup.add(godsGroup);
+
+      // 雙龍剪黏
+      [-1, 1].forEach(side => {
+        const dCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(side * 0.9, upRidgeY + 0.3, 0),
+          new THREE.Vector3(side * 1.6, upRidgeY + 1.0, 0),
+          new THREE.Vector3(side * 2.3, upRidgeY + 0.6, 0),
+          new THREE.Vector3(side * 3.1, upRidgeY + 1.25, 0)
+        ]);
+        const dMesh = new THREE.Mesh(new THREE.TubeGeometry(dCurve, 16, 0.13, 8, false), new THREE.MeshStandardMaterial({ color: 0x059669 }));
+        upperRoofGroup.add(dMesh);
+      });
+
+      // 歇山垂脊與戧脊起翹
+      [ [-1, -1], [1, -1], [-1, 1], [1, 1] ].forEach(([sx, sz]) => {
+        const chuiC = new THREE.LineCurve3(
+          new THREE.Vector3(sx * ridgeLenX, upRidgeY, 0),
+          new THREE.Vector3(sx * ridgeLenX, sideMidY, sz * sideMidZ)
+        );
+        upperRoofGroup.add(new THREE.Mesh(new THREE.TubeGeometry(chuiC, 6, 0.2, 8, false), ridgeGreenMat));
+
+        const qiangC = new THREE.LineCurve3(
+          new THREE.Vector3(sx * ridgeLenX, sideMidY, sz * sideMidZ),
+          new THREE.Vector3(sx * (upSpanX + 0.35), upBaseY + 0.45, sz * (upSpanZ + 0.35))
+        );
+        upperRoofGroup.add(new THREE.Mesh(new THREE.TubeGeometry(qiangC, 6, 0.2, 8, false), ridgeGreenMat));
+
+        // 飛簷起翹翼角
+        const wingTip = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.25, 6), brightGoldMat);
+        wingTip.position.set(sx * (upSpanX + 0.55), upBaseY + 0.85, sz * (upSpanZ + 0.55));
+        wingTip.rotation.x = sz * 0.55;
+        wingTip.rotation.z = -sx * 0.55;
+        upperRoofGroup.add(wingTip);
+      });
+
+      // 上簷青色滴水邊框
+      const upBorderF = new THREE.Mesh(new THREE.BoxGeometry(upSpanX * 2 + 0.3, 0.22, 0.3), ridgeCyanMat);
+      upBorderF.position.set(0, upBaseY - 0.08, upSpanZ);
+      upperRoofGroup.add(upBorderF);
+
+      const upBorderB = new THREE.Mesh(new THREE.BoxGeometry(upSpanX * 2 + 0.3, 0.22, 0.3), ridgeCyanMat);
+      upBorderB.position.set(0, upBaseY - 0.08, -upSpanZ);
+      upperRoofGroup.add(upBorderB);
+
+      templeGroup.add(upperRoofGroup);
+
+      // ==========================================
+      // 7. 真四垂對比柱 (COMPARISON PILLARS)
+      // 若為真四垂，需貫穿屋頂的四根通天金柱
+      // ==========================================
+      comparisonPillarsGroup = new THREE.Group();
+      comparisonPillarsGroup.name = "comparisonPillars";
+      comparisonPillarsGroup.visible = false;
+
+      const compColMat = new THREE.MeshStandardMaterial({
+        color: 0xef4444,
+        transparent: true,
+        opacity: 0.85,
+        emissive: 0x991b1b,
+        emissiveIntensity: 0.6,
+        wireframe: false
+      });
+
+      const totalH = upBaseY + 2.0;
+      const compColGeo = new THREE.CylinderGeometry(0.48, 0.48, totalH, 16);
+
+      tongZhuPositions.forEach(([tx, ty, tz]) => {
+        const pMesh = new THREE.Mesh(compColGeo, compColMat);
+        pMesh.position.set(tx, totalH / 2 + 0.9, tz);
+        comparisonPillarsGroup.add(pMesh);
+      });
+
+      templeGroup.add(comparisonPillarsGroup);
+      scene.add(templeGroup);
+    }
+
+    function createHotspotElements() {
+      const container = document.getElementById('hotspots-container');
+      container.innerHTML = '';
+
+      hotspotsData.forEach((spot, idx) => {
+        const el = document.createElement('div');
+        el.className = 'hotspot pointer-events-auto';
+        el.id = `hotspot-${spot.id}`;
+        el.innerHTML = `${spot.id}`;
+        el.onclick = () => showHotspotInfo(spot);
+        container.appendChild(el);
+      });
+    }
+
+    function updateHotspotsPosition() {
+      const container = document.getElementById('hotspots-container');
+      if (!container || !camera) return;
+
+      hotspotsData.forEach(spot => {
+        const el = document.getElementById(`hotspot-${spot.id}`);
+        if (!el) return;
+
+        // 計算炸開時的位移偏差
+        let worldPos = spot.pos.clone();
+        if (explodeDistance > 0) {
+          if (spot.id === 1 || spot.id === 5) {
+            worldPos.y += explodeDistance * 1.5;
+          } else if (spot.id === 2 || spot.id === 3) {
+            worldPos.y += explodeDistance * 0.75;
+          }
+        }
+
+        const screenPos = worldPos.clone().project(camera);
+        // 若在鏡頭背後則隱藏
+        if (screenPos.z > 1) {
+          el.style.display = 'none';
+          return;
+        }
+        el.style.display = 'flex';
+        const x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-(screenPos.y * 0.5) + 0.5) * window.innerHeight;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+      });
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('hotspot-modal');
+      if (modal) {
+        modal.classList.add('opacity-0', 'pointer-events-none', 'translate-y-2');
+        modal.classList.remove('opacity-100', 'translate-y-0');
+      }
+    }
+
+    function toggleSidebarPanel(show) {
+      const sidebar = document.getElementById('sidebar-controls');
+      const openBtn = document.getElementById('btn-open-sidebar');
+      if (!sidebar || !openBtn) return;
+
+      if (window.innerWidth >= 768) {
+        if (show) {
+          sidebar.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-6', 'scale-95');
+          openBtn.classList.add('hidden');
+        } else {
+          sidebar.classList.add('opacity-0', 'pointer-events-none', 'translate-y-6', 'scale-95');
+          openBtn.classList.remove('hidden');
+        }
+      }
+    }
+
+    // Mobile Sheet Cycle: Collapsed -> Half -> Full -> Collapsed
+    function cycleMobileSheetState() {
+      if (window.innerWidth >= 768) return;
+      const sidebar = document.getElementById('sidebar-controls');
+      const badge = document.getElementById('sheet-mode-badge');
+      if (!sidebar) return;
+
+      sidebar.classList.remove('sheet-collapsed', 'sheet-half', 'sheet-full');
+
+      if (mobileSheetState === 'half') {
+        mobileSheetState = 'collapsed';
+        sidebar.classList.add('sheet-collapsed');
+        if (badge) badge.textContent = '已收起 (全屏 3D)';
+      } else if (mobileSheetState === 'collapsed') {
+        mobileSheetState = 'half';
+        sidebar.classList.add('sheet-half');
+        if (badge) badge.textContent = '半屏分離';
+      } else {
+        mobileSheetState = 'half';
+        sidebar.classList.add('sheet-half');
+        if (badge) badge.textContent = '半屏分離';
+      }
+
+      // Trigger resize after CSS transition ends so canvas adapts to remaining viewport
+      setTimeout(() => {
+        onWindowResize();
+      }, 320);
+    }
+
+    function switchDeconstructMode(mode) {
+      currentMode = mode;
+      const btnExplore = document.getElementById('btn-mode-explore');
+      const btnUnified = document.getElementById('btn-mode-unified');
+      const btnCompare = document.getElementById('btn-mode-compare');
+      const unifiedPanel = document.getElementById('unified-panel');
+      const comparePanel = document.getElementById('compare-panel');
+
+      const activeClass = ['bg-amber-500/30', 'text-amber-300', 'border-amber-500/50'];
+      const inactiveClass = ['bg-stone-800/80', 'text-stone-300', 'border-stone-700'];
+
+      [btnExplore, btnUnified, btnCompare].forEach(b => {
+        if (!b) return;
+        b.classList.remove(...activeClass);
+        b.classList.add(...inactiveClass);
+      });
+
+      if (mode === 'explore') {
+        btnExplore.classList.add(...activeClass);
+        btnExplore.classList.remove(...inactiveClass);
+        unifiedPanel.classList.add('hidden');
+        comparePanel.classList.add('hidden');
+        if (comparisonPillarsGroup) comparisonPillarsGroup.visible = false;
+      } else if (mode === 'unified') {
+        btnUnified.classList.add(...activeClass);
+        btnUnified.classList.remove(...inactiveClass);
+        unifiedPanel.classList.remove('hidden');
+        comparePanel.classList.add('hidden');
+        if (comparisonPillarsGroup) comparisonPillarsGroup.visible = false;
+        setCameraView('side');
+      } else if (mode === 'compare') {
+        btnCompare.classList.add(...activeClass);
+        btnCompare.classList.remove(...inactiveClass);
+        comparePanel.classList.remove('hidden');
+        unifiedPanel.classList.add('hidden');
+        if (comparisonPillarsGroup) comparisonPillarsGroup.visible = true;
+        setCameraView('front');
+      }
+    }
+
+    function toggleHighlightLoadPath() {
+      highlightLoadPathActive = !highlightLoadPathActive;
+      const btn = document.getElementById('btn-highlight-loadpath');
+      const loadPanel = document.getElementById('loadpath-panel');
+
+      if (highlightLoadPathActive) {
+        btn.classList.add('bg-amber-400', 'text-stone-900', 'border-amber-300');
+        btn.classList.remove('bg-amber-700/60', 'text-amber-200');
+        loadPanel.classList.remove('hidden');
+
+        // 同色高亮標出「短柱 → 下方樑架 → 落地柱」
+        const highlightColor = 0xf59e0b; // 耀眼金澄色
+        brightGoldMat.emissive.set(highlightColor);
+        brightGoldMat.emissiveIntensity = 0.85;
+
+        woodDarkMat.emissive.set(0xd97706);
+        woodDarkMat.emissiveIntensity = 0.75;
+
+        columnRedMat.emissive.set(0xb45309);
+        columnRedMat.emissiveIntensity = 0.7;
+
+        // 接點榫卯光圈增強
+        if (jointNodesGroup) jointNodesGroup.visible = true;
+
+        // 降低非承重屋瓦干擾，突顯內部大木路徑
+        tileLowerMat.opacity = 0.35;
+        tileLowerMat.transparent = true;
+        tileUpperMat.opacity = 0.75;
+        tileUpperMat.transparent = true;
+
+        // 鏡頭特寫：清楚觀察短柱底端接點、下方樑架與落地金柱的縱向對齊
+        animateCameraTo(new THREE.Vector3(9.5, 8.2, 9.8), new THREE.Vector3(4.2, 5.8, 3.8));
+      } else {
+        btn.classList.remove('bg-amber-400', 'text-stone-900', 'border-amber-300');
+        btn.classList.add('bg-amber-700/60', 'text-amber-200');
+        loadPanel.classList.add('hidden');
+
+        brightGoldMat.emissive.set(0x000000);
+        brightGoldMat.emissiveIntensity = 0.0;
+
+        woodDarkMat.emissive.set(0x000000);
+        woodDarkMat.emissiveIntensity = 0.0;
+
+        columnRedMat.emissive.set(0x000000);
+        columnRedMat.emissiveIntensity = 0.0;
+
+        if (jointNodesGroup) jointNodesGroup.visible = true;
+
+        tileLowerMat.opacity = 1.0;
+        tileLowerMat.transparent = false;
+        tileUpperMat.opacity = 1.0;
+        tileUpperMat.transparent = false;
+      }
+    }
+
+    function showHotspotInfo(spot) {
+      const modal = document.getElementById('hotspot-modal');
+      document.getElementById('modal-title').textContent = `${spot.id}. ${spot.title}`;
+      document.getElementById('modal-desc').textContent = spot.desc;
+      document.getElementById('modal-tag').textContent = spot.tag;
+
+      modal.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-2');
+      modal.classList.add('opacity-100', 'translate-y-0');
+
+      if (spot.id === 3) {
+        // 點擊短柱時，同步展示接點特寫並短暫啟動傳力標示
+        animateCameraTo(
+          new THREE.Vector3(7.8, 8.4, 7.8),
+          new THREE.Vector3(4.2, 6.5, 3.8)
+        );
+      } else {
+        // 視角平滑聚焦
+        animateCameraTo(
+          spot.pos.clone().add(new THREE.Vector3(10, 5, 10)),
+          spot.pos.clone()
+        );
+      }
+    }
+
+    function onExplodeChange(val) {
+      explodeDistance = (val / 100) * 8.0;
+      document.getElementById('explode-val-text').textContent = `${val}%`;
+
+      if (upperRoofGroup) {
+        upperRoofGroup.position.y = explodeDistance * 1.5;
+      }
+      if (tongZhuGroup) {
+        tongZhuGroup.position.y = explodeDistance * 0.75;
+      }
+    }
+
+    function setLayerFilter(layer) {
+      document.querySelectorAll('.layer-pill').forEach(btn => {
+        btn.classList.remove('bg-amber-600/40', 'text-amber-300', 'border-amber-500/50');
+        btn.classList.add('bg-stone-800', 'text-stone-300', 'border-stone-700');
+      });
+      event.target.classList.add('bg-amber-600/40', 'text-amber-300', 'border-amber-500/50');
+
+      upperRoofGroup.visible = (layer === 'all' || layer === 'upperRoof');
+      tongZhuGroup.visible = (layer === 'all' || layer === 'tongZhu');
+      mainBeamsGroup.visible = (layer === 'all' || layer === 'mainBeams');
+      lowerRoofGroup.visible = (layer === 'all' || layer === 'lowerRoof');
+      columnsGroup.visible = (layer === 'all');
+    }
+
+    function toggleHighlightEaves() {
+      highlightEavesActive = !highlightEavesActive;
+      const btn = document.getElementById('btn-highlight-eaves');
+
+      if (highlightEavesActive) {
+        btn.classList.add('bg-amber-500', 'text-stone-900');
+        btn.classList.remove('bg-amber-700/60', 'text-amber-200');
+        tileUpperMat.emissive.set(0x9a3412);
+        tileLowerMat.emissive.set(0x164e63);
+      } else {
+        btn.classList.remove('bg-amber-500', 'text-stone-900');
+        btn.classList.add('bg-amber-700/60', 'text-amber-200');
+        tileUpperMat.emissive.set(0x000000);
+        tileLowerMat.emissive.set(0x000000);
+      }
+    }
+
+    function setCameraView(view) {
+      if (view === 'front') {
+        animateCameraTo(new THREE.Vector3(0, 8.5, 29), new THREE.Vector3(0, 8, 0));
+      } else if (view === 'side') {
+        animateCameraTo(new THREE.Vector3(28, 9, 0), new THREE.Vector3(0, 8, 0));
+      } else if (view === 'eaves') {
+        animateCameraTo(new THREE.Vector3(12, 10, 18), new THREE.Vector3(0, 8.5, 0));
+      } else if (view === 'under') {
+        animateCameraTo(new THREE.Vector3(0, 2.5, 7), new THREE.Vector3(0, 8, 0));
+      } else if (view === 'top') {
+        animateCameraTo(new THREE.Vector3(0, 32, 15), new THREE.Vector3(0, 6, 0));
+      }
+    }
+
+    function resetCameraView() {
+      animateCameraTo(new THREE.Vector3(22, 16, 26), new THREE.Vector3(0, 7.5, 0));
+      closeModal();
+    }
+
+    function animateCameraTo(targetPos, targetLookAt) {
+      const startPos = camera.position.clone();
+      const startLookAt = controls.target.clone();
+      const duration = 1000;
+      const startTime = performance.now();
+
+      function updateStep(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const ease = 0.5 - Math.cos(progress * Math.PI) / 2; // EaseInOutSine
+
+        camera.position.lerpVectors(startPos, targetPos, ease);
+        controls.target.lerpVectors(startLookAt, targetLookAt, ease);
+        controls.update();
+
+        if (progress < 1) {
+          requestAnimationFrame(updateStep);
+        }
+      }
+      requestAnimationFrame(updateStep);
+    }
+
+    function toggleDayNight() {
+      isDay = !isDay;
+      const icon = document.getElementById('icon-lighting');
+
+      if (isDay) {
+        icon.className = "fa-solid fa-sun";
+        scene.background.set(0x11100f);
+        scene.fog.color.set(0x11100f);
+        ambientLight.intensity = 0.7;
+        dirLight.intensity = 1.4;
+        templeInteriorLight.intensity = 1.2;
+      } else {
+        icon.className = "fa-solid fa-moon text-indigo-300";
+        scene.background.set(0x050508);
+        scene.fog.color.set(0x050508);
+        ambientLight.intensity = 0.15;
+        dirLight.intensity = 0.2;
+        templeInteriorLight.intensity = 3.5;
+        lanternRedMat.emissiveIntensity = 1.2;
+      }
+    }
+
+    function toggleWireframe() {
+      isWireframe = !isWireframe;
+      scene.traverse(child => {
+        if (child.isMesh && child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.wireframe = isWireframe);
+          } else {
+            child.material.wireframe = isWireframe;
+          }
+        }
+      });
+      document.getElementById('btn-wireframe').classList.toggle('text-amber-400');
+    }
+
+    function toggleAutoRotate() {
+      controls.autoRotate = !controls.autoRotate;
+      controls.autoRotateSpeed = 1.2;
+      document.getElementById('btn-rotate').classList.toggle('text-amber-400');
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('canvas-container');
+      if (!container || !renderer || !camera) return;
+
+      const width = container.clientWidth || window.innerWidth;
+      const height = container.clientHeight || window.innerHeight;
+
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      updateHotspotsPosition();
+      renderer.render(scene, camera);
+    }
+
+    // Start App on Window Load
+    window.onload = function () {
+      initScene();
+      animate();
+    };
+  </script>
+</body>
+</html>
